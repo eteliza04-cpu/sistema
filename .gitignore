@@ -1,0 +1,19 @@
+# Excel
+*.tmp
+~$*.xlsm
+*.xlk
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.db
+
+# Sistema
+*.log
+*.bak
+*.backup

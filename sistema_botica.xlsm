@@ -1,0 +1,273 @@
+Option Explicit
+
+' ============================================
+' SISTEMA BASICO PARA BOTICA - VERSION PRUEBA
+' ============================================
+
+' Variables globales
+Dim numeroBoleta As Integer
+
+' --------------------------------------------
+' Inicializar sistema al abrir el archivo
+' --------------------------------------------
+Sub Auto_Open()
+    numeroBoleta = ObtenerUltimoNumeroBoleta() + 1
+    Range("C3").Value = "B" & Format(numeroBoleta, "000")
+    Range("C4").Value = Date
+    Range("C5").Value = "Cliente General"
+    LimpiarListaVenta
+    MsgBox "Sistema de Botica listo. Boleta N° " & Range("C3").Value, vbInformation, "Bienvenido"
+End Sub
+
+' --------------------------------------------
+' Obtener último número de boleta
+' --------------------------------------------
+Function ObtenerUltimoNumeroBoleta() As Integer
+    Dim ultFila As Long
+    ultFila = Sheets("Ventas").Range("A" & Rows.Count).End(xlUp).Row
+    If ultFila = 1 Then
+        ObtenerUltimoNumeroBoleta = 0
+    Else
+        Dim ultimoTexto As String
+        ultimoTexto = Sheets("Ventas").Range("A" & ultFila).Value
+        ObtenerUltimoNumeroBoleta = Val(Mid(ultimoTexto, 2))
+    End If
+End Function
+
+' --------------------------------------------
+' Buscar producto por código
+' --------------------------------------------
+Sub BuscarProducto()
+    Dim codigo As String
+    codigo = Trim(Range("C6").Value)
+    
+    If codigo = "" Then
+        MsgBox "Ingrese un código de producto", vbExclamation
+        Exit Sub
+    End If
+    
+    On Error Resume Next
+    Dim fila As Long
+    fila = Application.WorksheetFunction.Match(codigo, Sheets("Productos").Range("A:A"), 0)
+    
+    If Err.Number <> 0 Then
+        MsgBox "Producto no encontrado. Verifique el código.", vbCritical
+        Range("C6").Value = ""
+        Range("C6").Select
+        Exit Sub
+    End If
+    On Error GoTo 0
+    
+    ' Mostrar datos del producto
+    Range("D6").Value = Sheets("Productos").Cells(fila, 2).Value ' Nombre
+    Range("E6").Value = Sheets("Productos").Cells(fila, 4).Value ' Precio
+    Range("F6").Value = Sheets("Productos").Cells(fila, 5).Value ' Stock
+    Range("G6").Value = Sheets("Productos").Cells(fila, 3).Value ' Presentación
+    
+    ' Habilitar campo cantidad
+    Range("C7").Locked = False
+    Range("C7").Select
+End Sub
+
+' --------------------------------------------
+' Agregar producto a la lista de venta
+' --------------------------------------------
+Sub AgregarItem()
+    Dim nombre As String
+    Dim precio As Double
+    Dim cantidad As Integer
+    Dim stock As Integer
+    
+    ' Validar que haya un producto seleccionado
+    If Range("D6").Value = "" Then
+        MsgBox "Primero busque un producto", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Validar cantidad
+    cantidad = Val(Range("C7").Value)
+    If cantidad <= 0 Then
+        MsgBox "Ingrese una cantidad válida", vbExclamation
+        Range("C7").Select
+        Exit Sub
+    End If
+    
+    ' Validar stock
+    stock = Range("F6").Value
+    If cantidad > stock Then
+        MsgBox "Stock insuficiente. Disponible: " & stock, vbCritical
+        Range("C7").Select
+        Exit Sub
+    End If
+    
+    ' Obtener datos
+    nombre = Range("D6").Value
+    precio = Range("E6").Value
+    
+    ' Agregar a la lista
+    Dim ultFila As Long
+    ultFila = Sheets("Boleta").Range("A" & Rows.Count).End(xlUp).Row + 1
+    If ultFila < 10 Then ultFila = 10
+    
+    Sheets("Boleta").Cells(ultFila, 1).Value = nombre
+    Sheets("Boleta").Cells(ultFila, 2).Value = cantidad
+    Sheets("Boleta").Cells(ultFila, 3).Value = precio
+    Sheets("Boleta").Cells(ultFila, 4).Formula = "=RC[-2]*RC[-1]"
+    
+    ' Actualizar subtotales
+    CalcularTotales
+    
+    ' Limpiar campos para siguiente producto
+    Range("C6").Value = ""
+    Range("D6").Value = ""
+    Range("E6").Value = ""
+    Range("F6").Value = ""
+    Range("G6").Value = ""
+    Range("C7").Value = ""
+    Range("C6").Select
+End Sub
+
+' --------------------------------------------
+' Calcular totales de la venta
+' --------------------------------------------
+Sub CalcularTotales()
+    Dim ultFila As Long
+    ultFila = Sheets("Boleta").Range("A" & Rows.Count).End(xlUp).Row
+    If ultFila < 10 Then ultFila = 10
+    
+    Dim sumaSubtotal As Double
+    Dim i As Long
+    
+    For i = 10 To ultFila
+        sumaSubtotal = sumaSubtotal + Sheets("Boleta").Cells(i, 4).Value
+    Next i
+    
+    Range("E10").Value = sumaSubtotal           ' Subtotal
+    Range("E11").Value = sumaSubtotal * 0.18    ' IGV 18%
+    Range("E12").Value = sumaSubtotal * 1.18    ' Total
+End Sub
+
+' --------------------------------------------
+' Registrar venta
+' --------------------------------------------
+Sub RegistrarVenta()
+    ' Validar que haya productos en la lista
+    Dim ultFila As Long
+    ultFila = Sheets("Boleta").Range("A" & Rows.Count).End(xlUp).Row
+    If ultFila < 10 Then
+        MsgBox "No hay productos en la venta", vbExclamation
+        Exit Sub
+    End If
+    
+    ' Confirmar
+    If MsgBox("¿Registrar esta venta por S/ " & Range("E12").Value & "?", vbYesNo + vbQuestion) = vbNo Then
+        Exit Sub
+    End If
+    
+    ' Guardar en Ventas
+    Dim filaVenta As Long
+    filaVenta = Sheets("Ventas").Range("A" & Rows.Count).End(xlUp).Row + 1
+    
+    Dim numBoleta As String
+    numBoleta = Range("C3").Value
+    
+    ' Cabecera de la venta
+    Sheets("Ventas").Cells(filaVenta, 1).Value = numBoleta
+    Sheets("Ventas").Cells(filaVenta, 2).Value = Range("C4").Value
+    Sheets("Ventas").Cells(filaVenta, 3).Value = Range("C5").Value
+    Sheets("Ventas").Cells(filaVenta, 8).Value = Range("E10").Value  ' Subtotal
+    Sheets("Ventas").Cells(filaVenta, 9).Value = Range("E11").Value  ' IGV
+    Sheets("Ventas").Cells(filaVenta, 10).Value = Range("E12").Value ' Total
+    
+    ' Guardar detalle y restar stock
+    Dim j As Long
+    Dim filaDetalle As Long
+    filaDetalle = filaVenta
+    
+    For j = 10 To ultFila
+        Dim producto As String
+        Dim cantidad As Integer
+        Dim precioUnit As Double
+        
+        producto = Sheets("Boleta").Cells(j, 1).Value
+        cantidad = Sheets("Boleta").Cells(j, 2).Value
+        precioUnit = Sheets("Boleta").Cells(j, 3).Value
+        
+        ' Guardar detalle en misma fila
+        Sheets("Ventas").Cells(filaDetalle, 4).Value = producto
+        Sheets("Ventas").Cells(filaDetalle, 5).Value = cantidad
+        Sheets("Ventas").Cells(filaDetalle, 6).Value = precioUnit
+        Sheets("Ventas").Cells(filaDetalle, 7).Value = cantidad * precioUnit
+        
+        ' Restar stock
+        Dim filaProd As Long
+        filaProd = Application.WorksheetFunction.Match(producto, Sheets("Productos").Range("B:B"), 0)
+        Sheets("Productos").Cells(filaProd, 5).Value = Sheets("Productos").Cells(filaProd, 5).Value - cantidad
+        
+        filaDetalle = filaDetalle + 1
+    Next j
+    
+    ' Actualizar número de boleta
+    numeroBoleta = numeroBoleta + 1
+    Range("C3").Value = "B" & Format(numeroBoleta, "000")
+    
+    ' Limpiar lista
+    LimpiarListaVenta
+    Range("C5").Value = "Cliente General"
+    
+    MsgBox "✅ Venta registrada exitosamente", vbInformation
+End Sub
+
+' --------------------------------------------
+' Limpiar lista de venta
+' --------------------------------------------
+Sub LimpiarListaVenta()
+    Dim ultFila As Long
+    ultFila = Sheets("Boleta").Range("A" & Rows.Count).End(xlUp).Row
+    If ultFila >= 10 Then
+        Sheets("Boleta").Range("A10:D" & ultFila).ClearContents
+    End If
+    Range("E10").Value = 0
+    Range("E11").Value = 0
+    Range("E12").Value = 0
+    Range("C6").Value = ""
+    Range("D6").Value = ""
+    Range("E6").Value = ""
+    Range("F6").Value = ""
+    Range("G6").Value = ""
+    Range("C7").Value = ""
+    Range("C6").Select
+End Sub
+
+' --------------------------------------------
+' Ver reporte diario
+' --------------------------------------------
+Sub VerReporteDiario()
+    Dim fecha As Date
+    fecha = Range("C4").Value
+    
+    Sheets("Reporte_Diario").Select
+    Range("A1").Value = "REPORTE DE VENTAS - " & Format(fecha, "dd/mm/yyyy")
+    
+    ' Filtrar ventas del día
+    Sheets("Ventas").Range("A1:J1").AutoFilter Field:=2, Criteria1:=fecha
+    
+    ' Calcular total
+    Dim totalDia As Double
+    totalDia = Application.WorksheetFunction.Sum(Sheets("Ventas").Range("J:J"))
+    
+    Sheets("Reporte_Diario").Range("A3").Value = "Total ventas del día:"
+    Sheets("Reporte_Diario").Range("B3").Value = Format(totalDia, "S/ #,##0.00")
+    
+    MsgBox "Reporte generado. Total: S/ " & Format(totalDia, "#,##0.00"), vbInformation
+End Sub
+
+' --------------------------------------------
+' Limpiar venta actual (sin guardar)
+' --------------------------------------------
+Sub LimpiarVenta()
+    If MsgBox("¿Limpiar la venta actual sin guardar?", vbYesNo + vbQuestion) = vbYes Then
+        LimpiarListaVenta
+        Range("C5").Value = "Cliente General"
+    End If
+End Sub
